@@ -742,6 +742,18 @@ pub(crate) type WeechatInputCbT = unsafe extern "C" fn(
 ) -> c_int;
 
 impl Buffer<'_> {
+    /// Create a handle from a buffer object.
+    /// 
+    /// TODO: Is this safe?  buffer callbacks do it, so it seems fine?
+    pub fn handle(&self) -> BufferHandle {
+        BufferHandle {
+            buffer_name: Rc::new(self.name().to_string()),
+            weechat: self.weechat().ptr,
+            buffer_ptr: Rc::new(Cell::new(self.ptr())),
+            closing: Rc::new(Cell::new(false)),
+        }
+    }
+
     fn weechat(&self) -> &Weechat {
         match &self.inner {
             InnerBuffers::BorrowedBuffer(b) => &b.weechat,
@@ -839,14 +851,7 @@ impl Buffer<'_> {
         let fmt_str = LossyCString::new("%s");
         let message = LossyCString::new(message);
 
-        unsafe {
-            printf_y(
-                self.ptr(),
-                y,
-                fmt_str.as_ptr(),
-                message.as_ptr(),
-            )
-        }
+        unsafe { printf_y(self.ptr(), y, fmt_str.as_ptr(), message.as_ptr()) }
     }
 
     /// Search for a nicklist group by name
@@ -997,9 +1002,7 @@ impl Buffer<'_> {
 
         let nicklist_remove_all = weechat.get().nicklist_remove_all.unwrap();
 
-        unsafe {
-            nicklist_remove_all(self.ptr())
-        }
+        unsafe { nicklist_remove_all(self.ptr()) }
     }
 
     fn add_nick_helper(
@@ -1488,12 +1491,12 @@ impl Buffer<'_> {
     /// Disables print hooks for the buffer.
     pub fn disable_print_hooks(&self) {
         self.set("print_hooks_enabled", "0")
-    } 
+    }
 
     /// Enables print hooks for the buffer.
     pub fn enable_print_hooks(&self) {
         self.set("print_hooks_enabled", "1")
-    } 
+    }
 
     /// Sets buffer type to free content.
     pub fn set_free_content(&self) {
