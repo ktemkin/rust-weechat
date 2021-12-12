@@ -429,6 +429,83 @@ impl BufferBuilder {
     }
 }
 
+mod c_sync_callback {
+    use super::BufferPointers;
+    pub use crate::buffer::{
+        hotlist::HotlistPriority,
+        lines::{BufferLine, BufferLines, LineData},
+        nick::{Nick, NickSettings},
+        nickgroup::NickGroup,
+        notify::NotifyLevel,
+        window::Window,
+    };
+    use crate::Weechat;
+    use libc::{c_char, c_int};
+    use std::{
+        ffi::{c_void, CStr},
+        ptr,
+    };
+    use weechat_sys::{t_gui_buffer, WEECHAT_RC_ERROR, WEECHAT_RC_OK};
+
+    pub unsafe extern "C" fn c_input_cb(
+        pointer: *const c_void,
+        _data: *mut c_void,
+        buffer: *mut t_gui_buffer,
+        input_data: *const c_char,
+    ) -> c_int {
+        let input_data = CStr::from_ptr(input_data).to_string_lossy();
+
+        let pointers: &mut BufferPointers = { &mut *(pointer as *mut BufferPointers) };
+
+        let weechat = Weechat::from_ptr(pointers.weechat);
+        let buffer = weechat.buffer_from_ptr(buffer);
+
+        let ret = if let Some(ref mut cb) = pointers.input_cb.as_mut() {
+            cb.callback(&weechat, &buffer, input_data).is_ok()
+        } else {
+            true
+        };
+
+        if ret {
+            WEECHAT_RC_OK
+        } else {
+            WEECHAT_RC_ERROR
+        }
+    }
+
+    pub unsafe extern "C" fn c_close_cb(
+        pointer: *const c_void,
+        _data: *mut c_void,
+        buffer: *mut t_gui_buffer,
+    ) -> c_int {
+        // We use from_raw() here so that the box gets freed at the end
+        // of this scope.
+        let pointers = Box::from_raw(pointer as *mut BufferPointers);
+        let weechat = Weechat::from_ptr(pointers.weechat);
+        let buffer = weechat.buffer_from_ptr(buffer);
+        buffer.mark_as_closing();
+
+        let ret = if let Some(mut cb) = pointers.close_cb {
+            cb.callback(&weechat, &buffer).is_ok()
+        } else {
+            true
+        };
+
+        // Invalidate the buffer pointer now.
+        pointers
+            .buffer_cell
+            .as_ref()
+            .expect("Buffer cell wasn't initialized properly")
+            .replace(ptr::null_mut());
+
+        if ret {
+            WEECHAT_RC_OK
+        } else {
+            WEECHAT_RC_ERROR
+        }
+    }
+}
+
 impl Weechat {
     /// Search a buffer by plugin and/or name.
     ///
@@ -619,69 +696,11 @@ impl Weechat {
     }
 
     fn buffer_new(builder: BufferBuilder) -> Result<BufferHandle, ()> {
-        unsafe extern "C" fn c_input_cb(
-            pointer: *const c_void,
-            _data: *mut c_void,
-            buffer: *mut t_gui_buffer,
-            input_data: *const c_char,
-        ) -> c_int {
-            let input_data = CStr::from_ptr(input_data).to_string_lossy();
-
-            let pointers: &mut BufferPointers = { &mut *(pointer as *mut BufferPointers) };
-
-            let weechat = Weechat::from_ptr(pointers.weechat);
-            let buffer = weechat.buffer_from_ptr(buffer);
-
-            let ret = if let Some(ref mut cb) = pointers.input_cb.as_mut() {
-                cb.callback(&weechat, &buffer, input_data).is_ok()
-            } else {
-                true
-            };
-
-            if ret {
-                WEECHAT_RC_OK
-            } else {
-                WEECHAT_RC_ERROR
-            }
-        }
-
-        unsafe extern "C" fn c_close_cb(
-            pointer: *const c_void,
-            _data: *mut c_void,
-            buffer: *mut t_gui_buffer,
-        ) -> c_int {
-            // We use from_raw() here so that the box gets freed at the end
-            // of this scope.
-            let pointers = Box::from_raw(pointer as *mut BufferPointers);
-            let weechat = Weechat::from_ptr(pointers.weechat);
-            let buffer = weechat.buffer_from_ptr(buffer);
-            buffer.mark_as_closing();
-
-            let ret = if let Some(mut cb) = pointers.close_cb {
-                cb.callback(&weechat, &buffer).is_ok()
-            } else {
-                true
-            };
-
-            // Invalidate the buffer pointer now.
-            pointers
-                .buffer_cell
-                .as_ref()
-                .expect("Buffer cell wasn't initialized properly")
-                .replace(ptr::null_mut());
-
-            if ret {
-                WEECHAT_RC_OK
-            } else {
-                WEECHAT_RC_ERROR
-            }
-        }
-
         Weechat::check_thread();
         let weechat = unsafe { Weechat::weechat() };
 
         let c_input_cb: Option<WeechatInputCbT> = match builder.input_callback {
-            Some(_) => Some(c_input_cb),
+            Some(_) => Some(c_sync_callback::c_input_cb),
             None => None,
         };
 
@@ -706,7 +725,7 @@ impl Weechat {
                 c_input_cb,
                 buffer_pointers_ref as *const _ as *const c_void,
                 ptr::null_mut(),
-                Some(c_close_cb),
+                Some(c_sync_callback::c_close_cb),
                 buffer_pointers_ref as *const _ as *const c_void,
                 ptr::null_mut(),
             )
@@ -743,7 +762,7 @@ pub(crate) type WeechatInputCbT = unsafe extern "C" fn(
 
 impl Buffer<'_> {
     /// Create a handle from a buffer object.
-    /// 
+    ///
     /// TODO: Is this safe?  buffer callbacks do it, so it seems fine?
     pub fn handle(&self) -> BufferHandle {
         BufferHandle {
@@ -782,6 +801,40 @@ impl Buffer<'_> {
 
     fn mark_as_closing(&self) {
         self.inner.mark_as_closing()
+    }
+
+    /// Redefine the input and close callbacks after an upgrade.
+    ///
+    /// Issues:
+    ///
+    /// What happens if called on buffer that hasn't been cleared
+    /// by an upgrade?
+    pub fn set_callbacks(
+        &self,
+        input_callback: Option<impl BufferInputCallback + 'static>,
+        close_callback: Option<impl BufferCloseCallback + 'static>,
+    ) {
+        let buffer_pointers = Box::new(BufferPointers {
+            weechat: self.weechat().ptr,
+            input_cb: input_callback
+                .map(|cb| Box::new(cb) as Box<(dyn BufferInputCallback + 'static)>),
+            close_cb: close_callback
+                .map(|cb| Box::new(cb) as Box<(dyn BufferCloseCallback + 'static)>),
+            buffer_cell: Some(Rc::new(Cell::new(self.ptr()))),
+        });
+
+        let buffer_pointers_ref = Box::leak(buffer_pointers);
+
+        self.set_pointer("input_callback", c_sync_callback::c_input_cb as *mut _);
+        self.set_pointer(
+            "input_callback_pointer",
+            buffer_pointers_ref as *const _ as *mut c_void,
+        );
+        self.set_pointer("close_callback", c_sync_callback::c_close_cb as *mut _);
+        self.set_pointer(
+            "close_callback_pointer",
+            buffer_pointers_ref as *const _ as *mut c_void,
+        );
     }
 
     /// Display a message on the buffer.
@@ -1097,6 +1150,15 @@ impl Buffer<'_> {
         let value = LossyCString::new(value);
 
         unsafe { buffer_set(self.ptr(), option.as_ptr(), value.as_ptr()) };
+    }
+
+    fn set_pointer(&self, property: &str, value: *mut c_void) {
+        let weechat = self.weechat();
+
+        let buffer_set_pointer = weechat.get().buffer_set_pointer.unwrap();
+        let option = LossyCString::new(property);
+
+        unsafe { buffer_set_pointer(self.ptr(), option.as_ptr(), value) };
     }
 
     fn get_string(&self, property: &str) -> Option<Cow<str>> {
