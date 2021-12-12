@@ -528,6 +528,18 @@ impl Weechat {
         string
     }
 
+    /// Has weechat just upgraded?
+    pub fn upgrading(&self) -> bool {
+        Weechat::check_thread();
+        let weechat = unsafe { Weechat::weechat() };
+
+        let hdata = unsafe { weechat.hdata_get("plugin") };
+
+        unsafe {
+            weechat.hdata_integer(hdata, weechat.ptr as *mut std::ffi::c_void, "upgrading") == 1
+        }
+    }
+
     /// Execute a modifier.
     ///
     /// A modifier takes a string and modifies it in some way, Weechat has a
