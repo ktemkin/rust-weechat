@@ -251,8 +251,9 @@ impl Weechat {
         }
     }
 
+    /// Get a reference to the weechat plugin
     #[inline]
-    pub(crate) fn get(&self) -> &t_weechat_plugin {
+    pub fn get(&self) -> &t_weechat_plugin {
         unsafe { &*self.ptr }
     }
 

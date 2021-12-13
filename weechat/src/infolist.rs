@@ -25,7 +25,7 @@ use std::{
         hash_map::{IntoIter as IterHashmap, Keys},
         HashMap,
     },
-    ffi::CStr,
+    ffi::{CStr, c_void},
     fmt::Debug,
     marker::PhantomData,
     ptr,
@@ -57,6 +57,7 @@ pub enum InfolistType {
     String,
     Time,
     Buffer,
+    Pointer,
 }
 
 impl From<&str> for InfolistType {
@@ -65,7 +66,7 @@ impl From<&str> for InfolistType {
             "i" => InfolistType::Integer,
             "s" => InfolistType::String,
             "t" => InfolistType::Time,
-            "p" => InfolistType::Buffer,
+            "p" => InfolistType::Pointer,
             v => panic!("Got unexpected value {}", v),
         }
     }
@@ -110,6 +111,20 @@ impl<'a> InfolistItem<'a> {
                 Some(CStr::from_ptr(ptr).to_string_lossy())
             }
         }
+    }
+
+    fn pointer(&'a self, name: &str) -> Option<*mut c_void> {
+        let name = LossyCString::new(name);
+
+        let infolist_pointer = self.weechat.get().infolist_pointer.unwrap();
+
+        let ptr = unsafe { infolist_pointer(self.ptr, name.as_ptr()) };
+
+        if ptr.is_null() {
+            return None;
+        }
+
+        Some(ptr)
     }
 
     fn buffer(&self, name: &str) -> Option<Buffer> {
@@ -157,6 +172,7 @@ impl<'a> InfolistItem<'a> {
             InfolistType::Integer => InfolistVariable::Integer(self.integer(key)),
             InfolistType::String => InfolistVariable::String(self.string(key)?),
             InfolistType::Time => InfolistVariable::Time(self.time(key)?),
+            InfolistType::Pointer => InfolistVariable::Pointer(self.pointer(key)?),
             InfolistType::Buffer => InfolistVariable::Buffer(self.buffer(key)?),
         };
 
@@ -240,6 +256,8 @@ pub enum InfolistVariable<'a> {
     Time(SystemTime),
     /// Represents an infolist GUI buffer variable.
     Buffer(Buffer<'a>),
+    /// Represents an infolist pointer variable.
+    Pointer(*mut c_void),
 }
 
 impl<'a> Infolist<'a> {
@@ -281,7 +299,7 @@ impl<'a> Infolist<'a> {
                 if Infolist::is_pointer_buffer(&self.infolist_name, name) {
                     InfolistType::Buffer
                 } else {
-                    continue;
+                    InfolistType::Pointer
                 }
             } else {
                 InfolistType::from(infolist_type)
