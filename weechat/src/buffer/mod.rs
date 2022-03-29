@@ -899,12 +899,21 @@ impl Buffer<'_> {
     /// * `message` - The message that will be displayed.
     pub fn print_y(&self, y: i32, message: &str) {
         let weechat = self.weechat();
-        let printf_y = weechat.get().printf_y.unwrap();
+        let printf_y = weechat.get().printf_y_date_tags.unwrap();
 
         let fmt_str = LossyCString::new("%s");
         let message = LossyCString::new(message);
 
-        unsafe { printf_y(self.ptr(), y, fmt_str.as_ptr(), message.as_ptr()) }
+        unsafe {
+            printf_y(
+                self.ptr(),
+                y,
+                0,
+                ptr::null(),
+                fmt_str.as_ptr(),
+                message.as_ptr(),
+            )
+        }
     }
 
     /// Search for a nicklist group by name
