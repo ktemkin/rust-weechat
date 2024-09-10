@@ -840,14 +840,15 @@ impl Buffer<'_> {
     /// Display a message on the buffer.
     pub fn print(&self, message: &str) {
         let weechat = self.weechat();
-        let printf_date_tags = weechat.get().printf_date_tags.unwrap();
+        let printf_datetime_tags = weechat.get().printf_datetime_tags.unwrap();
 
         let fmt_str = LossyCString::new("%s");
         let c_message = LossyCString::new(message);
 
         unsafe {
-            printf_date_tags(
+            printf_datetime_tags(
                 self.ptr(),
+                0,
                 0,
                 ptr::null(),
                 fmt_str.as_ptr(),
@@ -868,7 +869,7 @@ impl Buffer<'_> {
     /// * `message` - The message that will be displayed.
     pub fn print_date_tags(&self, date: i64, tags: &[&str], message: &str) {
         let weechat = self.weechat();
-        let printf_date_tags = weechat.get().printf_date_tags.unwrap();
+        let printf_datetime_tags = weechat.get().printf_datetime_tags.unwrap();
 
         let fmt_str = LossyCString::new("%s");
         let tags = tags.join(",");
@@ -876,9 +877,10 @@ impl Buffer<'_> {
         let message = LossyCString::new(message);
 
         unsafe {
-            printf_date_tags(
+            printf_datetime_tags(
                 self.ptr(),
                 date,
+                0,
                 tags.as_ptr(),
                 fmt_str.as_ptr(),
                 message.as_ptr(),
@@ -899,7 +901,7 @@ impl Buffer<'_> {
     /// * `message` - The message that will be displayed.
     pub fn print_y(&self, y: i32, message: &str) {
         let weechat = self.weechat();
-        let printf_y = weechat.get().printf_y_date_tags.unwrap();
+        let printf_y = weechat.get().printf_y_datetime_tags.unwrap();
 
         let fmt_str = LossyCString::new("%s");
         let message = LossyCString::new(message);
@@ -908,6 +910,7 @@ impl Buffer<'_> {
             printf_y(
                 self.ptr(),
                 y,
+                0,
                 0,
                 ptr::null(),
                 fmt_str.as_ptr(),

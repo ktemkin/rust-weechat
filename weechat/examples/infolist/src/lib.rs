@@ -116,6 +116,15 @@ impl InnerInfolist {
                                 Weechat::color("chat")
                             ),
                         ),
+                        InfolistVariable::Pointer(b) => (
+                            "ptr",
+                            format!(
+                                "{}{:?}{}",
+                                Weechat::color("green"),
+                                b,
+                                Weechat::color("chat")
+                            ),
+                        ),
                         InfolistVariable::Integer(i) => (
                             "int",
                             format!(
