@@ -127,7 +127,7 @@ impl HDataType for Cow<'_, str> {
 
         unsafe {
             if hdata_get_var_type(hdata.ptr, name.as_ptr())
-                != weechat_sys::WEECHAT_HDATA_STRING as i32
+                != weechat_sys::t_weechat_hdata_WEECHAT_HDATA_STRING as i32
             {
                 return None;
             }
@@ -179,7 +179,7 @@ impl HDataType for char {
 
         unsafe {
             if hdata_get_var_type(hdata.ptr, name.as_ptr())
-                != weechat_sys::WEECHAT_HDATA_CHAR as i32
+                != weechat_sys::t_weechat_hdata_WEECHAT_HDATA_CHAR as i32
             {
                 return None;
             }
@@ -217,7 +217,7 @@ impl HDataType for i64 {
 
         unsafe {
             if hdata_get_var_type(hdata.ptr, name.as_ptr())
-                != weechat_sys::WEECHAT_HDATA_LONG as i32
+                != weechat_sys::t_weechat_hdata_WEECHAT_HDATA_LONG as i32
             {
                 return None;
             }
@@ -254,7 +254,7 @@ impl HDataType for i32 {
 
         unsafe {
             if hdata_get_var_type(hdata.ptr, name.as_ptr())
-                != weechat_sys::WEECHAT_HDATA_INTEGER as i32
+                != weechat_sys::t_weechat_hdata_WEECHAT_HDATA_INTEGER as i32
             {
                 return None;
             }
@@ -291,7 +291,7 @@ impl HDataType for DateTime<Utc> {
 
         unsafe {
             if hdata_get_var_type(hdata.ptr, name.as_ptr())
-                != weechat_sys::WEECHAT_HDATA_TIME as i32
+                != weechat_sys::t_weechat_hdata_WEECHAT_HDATA_TIME as i32
             {
                 return None;
             }
@@ -358,7 +358,7 @@ impl HDataType for HDataPointer {
 
         unsafe {
             if hdata_get_var_type(hdata.ptr, name.as_ptr())
-                != weechat_sys::WEECHAT_HDATA_POINTER as i32
+                != weechat_sys::t_weechat_hdata_WEECHAT_HDATA_POINTER as i32
             {
                 return None;
             }
